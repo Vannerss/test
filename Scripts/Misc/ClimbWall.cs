@@ -25,28 +25,16 @@ namespace PLAYERTWO.PlatformerProject
             InitializeLocalBounds();
         }
 
-        /// Returns the direction (normalized) from a given Transform toward the wall face.
+/// Returns the direction (normalized) from a given Transform toward the wall face.
         /// Ignores lateral components so the vector points orthogonally to the wall.
-        public Vector3 GetDirectionToWall(Transform other) => GetDirectionToWall(other, out _);
+        public Vector3 GetDirectionToWall(Transform other) => -normal;
 
         /// Returns the direction (normalized) from a given Transform toward the wall face and the absolute distance along the wall normal.
         /// Assumes the climbable face’s normal is transform.forward.
         public Vector3 GetDirectionToWall(Transform other, out float distance)
         {
-            // Vector from the other to the wall center, expressed in wall local space
-            Vector3 toWallCenterWS = collider.bounds.center - other.position;
-            Vector3 toWallCenterLS = transform.InverseTransformDirection(toWallCenterWS);
-
-            // We only want motion along the wall normal (local Z). Zero X/Y so we don't "slide" along the wall.
-            Vector3 towardPlaneLS = new Vector3(0f, 0f, toWallCenterLS.z);
-            Vector3 towardPlaneWS = transform.TransformDirection(towardPlaneLS);
-
-            distance = towardPlaneWS.magnitude;
-            if (distance > 0.0001f)
-                return towardPlaneWS / distance;
-
-            // Already on the plane: face opposite to the normal (toward the wall)
-            distance = 0f;
+            Plane plane = new Plane(normal, center);
+            distance = plane.GetDistanceToPoint(other.position);
             return -normal;
         }
 

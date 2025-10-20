@@ -21,7 +21,6 @@ namespace PLAYERTWO.PlatformerProject
             
             player.velocity = Vector3.zero;
             player.climbWall.GetDirectionToWall(player.transform, out m_collisionDistance);
-            Debug.Log(player);
             player.climbWall.RotateToWall(player.transform);
 
             //player.skin.position += player.transform.rotation * player.stats.current.poleClimbSkinOffset;
@@ -36,7 +35,6 @@ namespace PLAYERTWO.PlatformerProject
 
         protected override void OnStep(Player player)
         {
-            Debug.Log(player);
             var dirToWall = player.climbWall.GetDirectionToWall(player.transform);
             var inputDir = player.inputs.GetMovementDirection();
 
@@ -63,7 +61,7 @@ namespace PLAYERTWO.PlatformerProject
 
             player.climbWall.RotateToWall(player.transform);
 
-            player.FaceDirection(-player.climbWall.normal);
+            player.FaceDirection(player.climbWall.normal);
 
             var horizontalPad = player.radius;
             var verticalPad = player.height * 0.5f + player.center.y;
