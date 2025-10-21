@@ -346,7 +346,42 @@ namespace PLAYERTWO.PlatformerProject
 				states.Change<WallClimbPlayerState>();
 			}
 		}
+		
+		/// <summary>
+		/// A specialized ledge grab check for states like Wall Climb where the player is moving upwards.
+		/// </summary>
+		public virtual bool TryLedgeGrabFromClimb()
+		{
+			// This is a simplified version of LedgeGrab() for use in states like WallClimb
+			if (
+				stats.current.canLedgeHang
+				&& !holding
+				&& states.ContainsStateOfType(typeof(LedgeHangingPlayerState))
+				&& DetectingLedge(
+					stats.current.ledgeMaxForwardDistance,
+					stats.current.ledgeMaxDownwardDistance,
+					out var hit
+				)
+			)
+			{
+				if (Vector3.Angle(hit.normal, transform.up) > 0)
+					return false;
+				if (hit.collider is CapsuleCollider || hit.collider is SphereCollider)
+					return false;
 
+				var ledgeDistance = radius + stats.current.ledgeMaxForwardDistance;
+				var lateralOffset = transform.forward * ledgeDistance;
+				var verticalOffset = -transform.up * (height * 0.5f);
+				ledge = hit.collider;
+				velocity = Vector3.zero;
+				position = hit.point - lateralOffset + verticalOffset;
+				HandlePlatform(hit.collider);
+				states.Change<LedgeHangingPlayerState>();
+				playerEvents.OnLedgeGrabbed?.Invoke();
+				return true;
+			}
+			return false;
+		}
 
 		protected override bool EvaluateLanding(RaycastHit hit)
 		{

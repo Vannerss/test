@@ -2,142 +2,95 @@ using UnityEngine;
 
 namespace PLAYERTWO.PlatformerProject
 {
-    public class WallClimbPlayerState : PlayerState
-    {
-        // Distance along wall normal from player to wall, cached on enter
-        protected float m_collisionDistance;
+	public class WallClimbPlayerState : PlayerState
+	{
+		protected Vector3 m_wallNormal;
+		
+		protected const float k_wallStickForce = 5f;
+		protected const float k_wallOffset = 0.01f;
 
-        // 0..1 percentages inside wall area (like UVs) from last clamp
-        protected float m_wallHPercentage; // across width (x)
-        protected float m_wallVPercentage; // across height (y)
+		protected override void OnEnter(Player player)
+		{
+			player.ResetJumps();
+			player.ResetAirSpins();
+			player.ResetAirDash();
+			player.velocity = Vector3.zero;
 
-        protected const float k_wallOffset = 0.01f; // tiny hover from wall plane
-        
-        protected override void OnEnter(Player player)
-        {
-            player.ResetJumps();
-            player.ResetAirSpins();
-            player.ResetAirDash();
-            
-            player.velocity = Vector3.zero;
-            player.climbWall.GetDirectionToWall(player.transform, out m_collisionDistance);
-            player.climbWall.RotateToWall(player.transform);
+			player.climbWall.GetClosestSurfaceInfo(player.position, out var closestPoint, out m_wallNormal);
+			player.transform.rotation = Quaternion.LookRotation(-m_wallNormal, player.climbWall.transform.up);
+			
+			Vector3 snapToPosition = closestPoint + m_wallNormal * (player.radius + k_wallOffset);
+			player.controller.Move(snapToPosition - player.position);
+		}
 
-            //player.skin.position += player.transform.rotation * player.stats.current.poleClimbSkinOffset;
-        }
+		protected override void OnExit(Player player)
+		{
+			ResetUpAlignment(player);
+		}
 
-        protected override void OnExit(Player player)
-        {
-            //player.skin.position -= player.transform.rotation * player.stats.current.poleClimbSkinOffset;
+		protected override void OnStep(Player player)
+		{
+			player.climbWall.GetClosestSurfaceInfo(player.position, out _, out m_wallNormal);
+			player.transform.rotation = Quaternion.LookRotation(-m_wallNormal, player.climbWall.transform.up);
 
-            ResetUpAlignment(player);
-        }
+			var inputDir = player.inputs.GetMovementDirection();
+			
+			var verticalSpeed = inputDir.z * (inputDir.z > 0 ? player.stats.current.climbUpTopSpeed : player.stats.current.climbDownTopSpeed);
+			var horizontalSpeed = inputDir.x * player.stats.current.climbRotationTopSpeed;
 
-        protected override void OnStep(Player player)
-        {
-            var dirToWall = player.climbWall.GetDirectionToWall(player.transform);
-            var inputDir = player.inputs.GetMovementDirection();
+			Vector3 climbVelocity = (player.transform.up * verticalSpeed) + (player.transform.right * horizontalSpeed);
+			Vector3 stickVelocity = -m_wallNormal * k_wallStickForce;
 
-            HandleHorizontalMovement(player, inputDir);
-            HandleVerticalMovement(player, inputDir);
+			player.velocity = climbVelocity + stickVelocity;
+			
+			// After the main update moves the player, snap them back to the wall face.
+			Vector2 padding = new Vector2(player.radius, player.height * 0.5f);
+			
+			// You can now adjust padding.y here and it will work correctly!
+			// For example: padding.y += 0.5f;
+			padding.x -= 0.25f;
+			padding.y -= 1.3f;
 
-            if (player.inputs.GetJumpDown())
-            {
-                var localAway = -dirToWall;
-                player.FaceDirection(localAway);
-                player.DirectionalJump(
-                    localAway,
-                    player.stats.current.wallJumpHeight,
-                    player.stats.current.wallJumpDistance);
-                player.states.Change<FallPlayerState>();
-                return;
-            }
+			Vector3 clampedPosition = player.climbWall.ClampPointToWallFace(player.position, m_wallNormal, padding, out var normalizedPos);
+			player.controller.Move(clampedPosition - player.position);
+			
+			// NEW: Check for a ledge when moving up near the top
+			if (inputDir.z > 0 && normalizedPos.y >= 0.98f)
+			{
+				if (player.TryLedgeGrabFromClimb())
+				{
+					return; // Exit early if we successfully grabbed a ledge
+				}
+			}
+			
+			// Handle Jump
+			if (player.inputs.GetJumpDown())
+			{
+				player.DirectionalJump(
+					m_wallNormal,
+					player.stats.current.wallJumpHeight,
+					player.stats.current.wallJumpDistance);
+				player.states.Change<FallPlayerState>();
+				return;
+			}
+			
+			// Handle detaching from the bottom
+			if (normalizedPos.y < 0.01f && player.isGrounded && inputDir.z < 0)
+			{
+				player.states.Change<IdlePlayerState>();
+				return;
+			}
+		}
 
-            if (player.isGrounded && inputDir.z < 0)
-            {
-                player.states.Change<IdlePlayerState>();
-                return;
-            }
+		public override void OnContact(Player player, Collider other) { }
+		
+		protected virtual void ResetUpAlignment(Player player)
+		{
+			if (player.gravityField)
+				return;
 
-            player.climbWall.RotateToWall(player.transform);
-
-            player.FaceDirection(player.climbWall.normal);
-
-            var horizontalPad = player.radius;
-            var verticalPad = player.height * 0.5f + player.center.y;
-
-            var stickDistance = m_collisionDistance + k_wallOffset;
-
-            var clampedPos = player.climbWall.GetClampedStickPoint(
-                player.transform.position,
-                stickDistance,
-                new Vector2(horizontalPad, verticalPad),
-                out var t //(x,y) 0..1 across wall
-            );
-
-            m_wallHPercentage = t.x;
-            m_wallVPercentage = t.y;
-
-            player.transform.position = clampedPos;
-        }
-
-        public override void OnContact(Player player, Collider other) { }
-
-        protected virtual void HandleVerticalMovement(Player player, Vector3 inputDirection)
-        {
-            var speed = player.verticalVelocity.y;
-            var upAccel = player.stats.current.climbUpAcceleration;
-            var downAccel = player.stats.current.climbDownAcceleration;
-            var friction = player.stats.current.climbFriction;
-
-            var climbingUp = inputDirection.z > 0 && m_wallVPercentage < 1f;
-            var climbingDown = inputDirection.z < 0 && m_wallVPercentage > 0f;
-
-            if (climbingUp)
-                speed += upAccel * Time.deltaTime;
-            else if (climbingDown)
-                speed -= downAccel * Time.deltaTime;
-
-            if ((!climbingUp && !climbingDown) || Mathf.Sign(speed) != Mathf.Sign(inputDirection.z))
-                speed = Mathf.MoveTowards(speed, 0, friction * Time.deltaTime);
-
-            speed = Mathf.Clamp(
-                speed,
-                -player.stats.current.climbDownTopSpeed,
-                player.stats.current.climbUpTopSpeed
-            );
-
-            player.verticalVelocity = Vector3.up * speed;
-        }
-        
-        protected virtual void HandleHorizontalMovement(Player player, Vector3 inputDirection)
-        {
-            var speed = Vector3.Dot(player.lateralVelocity, player.localRight);
-            var friction = player.stats.current.climbFriction;
-            var topSpeed = player.stats.current.climbRotationTopSpeed;
-            var accel = player.stats.current.climbRotationAcceleration;
-
-            if (inputDirection.x > 0)
-                speed += accel * Time.deltaTime;
-            else if (inputDirection.x < 0)
-                speed -= accel * Time.deltaTime;
-
-            if (Mathf.Approximately(inputDirection.x, 0f) || Mathf.Sign(speed) != Mathf.Sign(inputDirection.x))
-                speed = Mathf.MoveTowards(speed, 0, friction * Time.deltaTime);
-
-            speed = Mathf.Clamp(speed, -topSpeed, topSpeed);
-
-            // Move along player's localRight (aligned with wall right due to RotateToWall)
-            player.lateralVelocity = player.localRight * speed;
-        }
-        
-        protected virtual void ResetUpAlignment(Player player)
-        {
-            if (player.gravityField)
-                return;
-
-            var target = Quaternion.FromToRotation(player.transform.up, Vector3.up);
-            player.transform.rotation = target * player.transform.rotation;
-        }
-    }
+			var target = Quaternion.FromToRotation(player.transform.up, Vector3.up);
+			player.transform.rotation = target * player.transform.rotation;
+		}
+	}
 }

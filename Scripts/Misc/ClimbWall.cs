@@ -1,90 +1,91 @@
-using System;
 using UnityEngine;
 
 namespace PLAYERTWO.PlatformerProject
 {
-    public class ClimbWall : MonoBehaviour
-    {
-        public new BoxCollider collider {get; protected set; }
-        public Vector3 center => collider.bounds.center;
+	[RequireComponent(typeof(BoxCollider))]
+	public class ClimbWall : MonoBehaviour
+	{
+		public new BoxCollider collider { get; protected set; }
+		public Vector3 center => transform.TransformPoint(collider.center);
 
-        protected Bounds _localBounds;
+		protected Bounds m_localBounds;
 
-        public Vector3 normal => transform.forward;
-        public Vector3 surfaceRight => transform.right;
-        public Vector3 surfaceUp => transform.up;
+		protected virtual void InitializeTag() => tag = GameTags.ClimbableWall;
+		protected virtual void InitializeCollider() => collider = GetComponent<BoxCollider>();
 
-        protected virtual void InitializeTag() => tag = GameTags.ClimbableWall; //TODO define in unity.
-        protected virtual void InitializeCollider() => collider = GetComponent<BoxCollider>();
-        protected virtual void InitializeLocalBounds() => _localBounds = BoundsHelper.GetLocalBounds(collider);
+		protected void Awake()
+		{
+			InitializeTag();
+			InitializeCollider();
+			m_localBounds = new Bounds(collider.center, collider.size);
+		}
 
-        protected void Awake()
-        {
-            InitializeTag();
-            InitializeCollider();
-            InitializeLocalBounds();
-        }
+		public void GetClosestSurfaceInfo(Vector3 queryPoint, out Vector3 closestPoint, out Vector3 surfaceNormal)
+		{
+			Vector3 localQueryPoint = transform.InverseTransformPoint(queryPoint);
+			Vector3 localClosestPoint = m_localBounds.ClosestPoint(localQueryPoint);
+			closestPoint = transform.TransformPoint(localClosestPoint);
 
-/// Returns the direction (normalized) from a given Transform toward the wall face.
-        /// Ignores lateral components so the vector points orthogonally to the wall.
-        public Vector3 GetDirectionToWall(Transform other) => -normal;
+			Vector3 diff = localQueryPoint - localClosestPoint;
+			float maxDist = -1;
+			Vector3 localNormal = Vector3.zero;
 
-        /// Returns the direction (normalized) from a given Transform toward the wall face and the absolute distance along the wall normal.
-        /// Assumes the climbable face’s normal is transform.forward.
-        public Vector3 GetDirectionToWall(Transform other, out float distance)
-        {
-            Plane plane = new Plane(normal, center);
-            distance = plane.GetDistanceToPoint(other.position);
-            return -normal;
-        }
+			if (Mathf.Abs(diff.x) > maxDist) { maxDist = Mathf.Abs(diff.x); localNormal = new Vector3(Mathf.Sign(diff.x), 0, 0); }
+			if (Mathf.Abs(diff.y) > maxDist) { maxDist = Mathf.Abs(diff.y); localNormal = new Vector3(0, Mathf.Sign(diff.y), 0); }
+			if (Mathf.Abs(diff.z) > maxDist) { localNormal = new Vector3(0, 0, Mathf.Sign(diff.z)); }
 
-        // Returns the closest point on the wallplane.
-        public Vector3 GetStickPointOnWallPlane(Vector3 worldPoint, float stickDistance = 0f)
-        {
-            Plane plane = new Plane(normal, center);
-            float signed = plane.GetDistanceToPoint(worldPoint);
+			surfaceNormal = transform.TransformDirection(localNormal).normalized;
+		}
 
-            return worldPoint - normal * signed + normal * stickDistance;
-        }
+		public Vector3 ClampPointToWallFace(Vector3 point, Vector3 normal, Vector2 padding, out Vector2 normalizedPos)
+		{
+			Plane plane = new Plane(-normal, point);
+			point = plane.ClosestPointOnPlane(point);
 
-        public Vector3 ClampPointToWallArea(Vector3 point, float offset, out Vector2 t)
-        {
-            return ClampPointToWallArea(point, new Vector2(offset, offset), out t);
-        }
-        
-        public Vector3 ClampPointToWallArea(Vector3 point, Vector2 offset, out Vector2 t)
-        {
-            Vector3 local = transform.InverseTransformPoint(point);
+			Vector3 localPoint = transform.InverseTransformPoint(point);
+			Vector3 localNormal = transform.InverseTransformDirection(normal);
 
-            Vector3 e = _localBounds.extents;
+			Vector3 extents = m_localBounds.extents;
+			Vector3 center = m_localBounds.center;
 
-            float minX = -e.x + offset.x;
-            float maxX = e.x - offset.x;
-            float minY = -e.y + offset.y;
-            float maxY = e.y - offset.y;
+			float hMin, hMax, vMin, vMax;
 
-            local.x = Mathf.Clamp(local.x, minX, maxX);
-            local.y = Mathf.Clamp(local.y, minY, maxY);
-            
-            t = new Vector2(
-                Mathf.InverseLerp(minX, maxX, local.x),
-                Mathf.InverseLerp(minY, maxY, local.y)
-            );
+			if (Mathf.Abs(localNormal.x) > 0.9f) // On an X face
+			{
+				vMin = center.y - extents.y + padding.y;
+				vMax = center.y + extents.y - padding.y;
+				hMin = center.z - extents.z + padding.x;
+				hMax = center.z + extents.z - padding.x;
 
-            return transform.TransformPoint(local);
-        }
+				localPoint.y = Mathf.Clamp(localPoint.y, vMin, vMax);
+				localPoint.z = Mathf.Clamp(localPoint.z, hMin, hMax);
+				normalizedPos = new Vector2(Mathf.InverseLerp(hMin, hMax, localPoint.z), Mathf.InverseLerp(vMin, vMax, localPoint.y));
+			}
+			else if (Mathf.Abs(localNormal.y) > 0.9f) // On a Y face
+			{
+				hMin = center.x - extents.x + padding.x;
+				hMax = center.x + extents.x - padding.x;
+				// BUG FIX HERE: Changed padding.x to padding.y for vertical clamping
+				vMin = center.z - extents.z + padding.y;
+				vMax = center.z + extents.z - padding.y;
 
-        public virtual void RotateToWall(Transform other)
-        {
-            Quaternion target = Quaternion.LookRotation(-normal, surfaceUp);
-            other.rotation = target;
-        }
+				localPoint.x = Mathf.Clamp(localPoint.x, hMin, hMax);
+				localPoint.z = Mathf.Clamp(localPoint.z, vMin, vMax);
+				normalizedPos = new Vector2(Mathf.InverseLerp(hMin, hMax, localPoint.x), Mathf.InverseLerp(vMin, vMax, localPoint.z));
+			}
+			else // On a Z face
+			{
+				hMin = center.x - extents.x + padding.x;
+				hMax = center.x + extents.x - padding.x;
+				vMin = center.y - extents.y + padding.y;
+				vMax = center.y + extents.y - padding.y;
 
-        public Vector3 GetClampedStickPoint(Vector3 point, float stickDistance, Vector2 clampOffset, out Vector2 t)
-        {
-            Vector3 onPlane = GetStickPointOnWallPlane(point, stickDistance);
-            return ClampPointToWallArea(onPlane, clampOffset, out t);
-        }
+				localPoint.x = Mathf.Clamp(localPoint.x, hMin, hMax);
+				localPoint.y = Mathf.Clamp(localPoint.y, vMin, vMax);
+				normalizedPos = new Vector2(Mathf.InverseLerp(hMin, hMax, localPoint.x), Mathf.InverseLerp(vMin, vMax, localPoint.y));
+			}
 
-    }
+			return transform.TransformPoint(localPoint);
+		}
+	}
 }
