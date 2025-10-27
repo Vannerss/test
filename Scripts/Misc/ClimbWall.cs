@@ -3,6 +3,7 @@ using UnityEngine;
 namespace PLAYERTWO.PlatformerProject
 {
 	[RequireComponent(typeof(BoxCollider))]
+	[AddComponentMenu("PLAYER TWO/Platformer Project/Misc/ClimbWall")]
 	public class ClimbWall : MonoBehaviour
 	{
 		public new BoxCollider collider { get; protected set; }

@@ -30,7 +30,27 @@ namespace PLAYERTWO.PlatformerProject
 
 		protected Vector3 m_pathForward;
 		protected Vector3 m_closestPointOnPath;
+		
+		public GrappleTarget currentGrappleTarget { get; set; }
+		public ConeDetect Grapple2DAimArea;
 
+		
+		public bool IsThereATargetFor2DGrapple()
+		{
+			if (Grapple2DAimArea.detectedTarget != null)
+			{
+				return true;
+			}
+
+			return false;
+		}
+
+		public void SetGrappleTargetGrapple2D()
+		{
+			var target = Grapple2DAimArea.detectedTarget.GetComponent<GrappleTarget>();
+			currentGrappleTarget = target;
+		}
+		
 		/// <summary>
 		/// Returns the Player Input Manager instance.
 		/// </summary>
@@ -942,6 +962,9 @@ namespace PLAYERTWO.PlatformerProject
 		protected override void Awake()
 		{
 			base.Awake();
+
+			Grapple2DAimArea = GetComponent<ConeDetect>();
+			
 			InitializeInputs();
 			InitializeStats();
 			InitializeHealth();

@@ -1,3 +1,4 @@
+using ExternalPropertyAttributes;
 using Unity.Cinemachine;
 using UnityEngine;
 
@@ -183,6 +184,7 @@ namespace PLAYERTWO.PlatformerProject
 		/// <summary>
 		/// Resets the camera to its initial position and rotation.
 		/// </summary>
+		[Button]
 		public virtual void Reset()
 		{
 			if (!player || !m_target)

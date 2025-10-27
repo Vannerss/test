@@ -26,6 +26,7 @@ namespace PLAYERTWO.PlatformerProject
 		protected InputAction m_glide;
 		protected InputAction m_dash;
 		protected InputAction m_grindBrake;
+		protected InputAction m_grapple;
 
 		protected Player m_player;
 		protected Camera m_camera;
@@ -54,10 +55,13 @@ namespace PLAYERTWO.PlatformerProject
 			m_glide = actions["Glide"];
 			m_dash = actions["Dash"];
 			m_grindBrake = actions["Grind Brake"];
+			m_grapple = actions["Grapple"];
 		}
 
 		protected virtual void InitializePlayer() => m_player = GetComponent<Player>();
 
+		public virtual bool GetGrappleDown() => m_grapple.WasPressedThisFrame();
+		
 		public virtual Vector3 GetMovementDirection()
 		{
 			if (Time.time < m_movementDirectionUnlockTime)
