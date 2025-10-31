@@ -9,7 +9,10 @@ namespace PLAYERTWO.PlatformerProject
 		public InputActionAsset actions;
 		public bool inverted = false;
 		
-
+		[Space]
+		[Tooltip("How long (in seconds) the Grapple button must be held to be considered a 'Hold' instead of a 'Tap'.")]
+		public float grappleHoldThreshold = 0.4f;
+		
 		protected InputAction m_movement;
 		protected InputAction m_run;
 		protected InputAction m_jump;
@@ -33,6 +36,12 @@ namespace PLAYERTWO.PlatformerProject
 
 		protected float m_movementDirectionUnlockTime;
 		protected float? m_lastJumpTime;
+		
+		private float m_grapplePressTime = -1f;
+		private bool m_isGrappleHolding = false;
+		private bool m_grappleHoldEventFired = false;
+		private bool m_grappleWasReleased = false;
+		private bool m_grappleWasReleasedAsHold = false;
 
 		protected const string k_mouseDeviceName = "Mouse";
 		protected const float k_jumpBuffer = 0.15f;
@@ -61,6 +70,23 @@ namespace PLAYERTWO.PlatformerProject
 		protected virtual void InitializePlayer() => m_player = GetComponent<Player>();
 
 		public virtual bool GetGrappleDown() => m_grapple.WasPressedThisFrame();
+		
+		/// <summary>
+		/// Returns true on the single frame the button is released,
+		/// ONLY if it was held for LESS than the 'grappleHoldThreshold'.
+		/// </summary>
+		public virtual bool GetGrappleTapDown()
+		{
+			return m_grappleWasReleased && !m_grappleWasReleasedAsHold;
+		}
+
+		/// <summary>
+		/// Returns true on the single frame that the hold time threshold is passed.
+		/// </summary>
+		public virtual bool GetGrappleHoldStarted()
+		{
+			return m_grappleHoldEventFired;
+		}
 		
 		public virtual Vector3 GetMovementDirection()
 		{
@@ -251,6 +277,33 @@ namespace PLAYERTWO.PlatformerProject
 			if (m_jump.WasPressedThisFrame())
 			{
 				m_lastJumpTime = Time.time;
+			}
+			
+			m_grappleWasReleased = false; // Reset frame-specific flags
+			m_grappleWasReleasedAsHold = false;
+			m_grappleHoldEventFired = false;
+
+			if (m_grapple.WasPressedThisFrame())
+			{
+				m_grapplePressTime = Time.time;
+				m_isGrappleHolding = false;
+			}
+
+			if (m_grapple.IsPressed() && !m_isGrappleHolding)
+			{
+				if (Time.time - m_grapplePressTime >= grappleHoldThreshold)
+				{
+					m_isGrappleHolding = true;
+					m_grappleHoldEventFired = true; // Fire event *once*
+				}
+			}
+
+			if (m_grapple.WasReleasedThisFrame())
+			{
+				m_grappleWasReleased = true;
+				m_grappleWasReleasedAsHold = m_isGrappleHolding; // Store if it *was* a hold
+				m_isGrappleHolding = false;
+				m_grapplePressTime = -1f;
 			}
 		}
 

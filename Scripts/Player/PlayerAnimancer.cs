@@ -11,6 +11,20 @@ public class PlayerAnimancer : MonoBehaviour
     [SerializeField] private AnimancerComponent _animancer;
     [SerializeField] private Player _player;
 
+    [Header("Mixers")]
+    [Tooltip("Blend: Idle, Walk, Run")]
+    [SerializeField] private LinearMixerTransition _locomotionMixer;
+    [Tooltip("Blend: HoldIdle, HoldWalk")]
+    [SerializeField] private LinearMixerTransition _holdLocomotionMixer;
+    [Tooltip("Blend: CrouchIdle, Crawl")]
+    [SerializeField] private LinearMixerTransition _crouchMixer;
+    [Tooltip("Blend: SwimIdle, SwimMove")]
+    [SerializeField] private LinearMixerTransition _swimMixer;
+    [Tooltip("Blend: PoleClimbIdle, PoleClimbMove")]
+    [SerializeField] private LinearMixerTransition _poleClimbMixer;
+    [Tooltip("Blend: LedgeHangIdle, LedgeHangMove")]
+    [SerializeField] private LinearMixerTransition _ledgeHangMixer;
+    
     [Header("Animation Clips")]
 
     #region Clips
@@ -74,6 +88,8 @@ public class PlayerAnimancer : MonoBehaviour
         {
             Debug.LogError("Player, PlayerStateManager, or events not found!", this);
         }
+        
+        OnStateChanged();
     }
 
     protected virtual void OnDestroy()

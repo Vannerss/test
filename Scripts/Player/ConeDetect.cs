@@ -52,7 +52,7 @@ namespace PLAYERTWO.PlatformerProject
 			if (m_player == null || m_inputs == null) return; // Ensure components are valid
 
 			// 1. Get Input Direction (using GetMovementDirection for raw input)
-			Vector3 inputDirection = m_inputs.GetLookDirection();
+			Vector3 inputDirection = m_inputs.GetLookDirection().normalized;
 
 			// 2. Determine Cone Direction based on input (Sidescroller perspective)
 			CalculateConeDirection(inputDirection);

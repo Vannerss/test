@@ -1,4 +1,3 @@
-// Scripts/Player/States/AimingHookshotPlayerState.cs
 using UnityEngine;
 using UnityEngine.InputSystem;
 
@@ -7,14 +6,15 @@ namespace PLAYERTWO.PlatformerProject
 	[AddComponentMenu("PLAYER TWO/Platformer Project/Player/States/Aiming Hookshot Player State")]
 	public class AimingGrapplePlayerState : PlayerState
 	{
-		// Configuration (Consider moving to PlayerStats or a dedicated Hookshot component)
-		public LayerMask grappleableLayer; // Assign in Inspector on Player or Stats
-		public LayerMask obstacleLayer;	// Layers that block the hookshot (usually everything except Player, Grappleable, triggers)
+		// ... (Configuration variables are unchanged) ...
+		public LayerMask grappleableLayer;
+		public LayerMask obstacleLayer;
 		public float hookshotRange = 150f;
-		public Transform hookshotOrigin;	// Assign in Inspector on Player
+		public Transform hookshotOrigin;
 
 		private GrappleTarget m_potentialTarget;
 		private Camera m_mainCamera;
+		private PlayerGrappleUI m_grappleUI; // Reference to the UI script
 
 		protected override void OnEnter(Player player)
 		{
@@ -25,118 +25,108 @@ namespace PLAYERTWO.PlatformerProject
 			m_potentialTarget = null;
 			m_mainCamera = Camera.main; // Cache the main camera
 			
-
-			Game.LockCursor(false);
-
-			// Optional: Slow down time slightly while aiming?
-			// Time.timeScale = 0.8f;
+			// Get the UI component and show the crosshair
+			m_grappleUI = player.GetComponent<PlayerGrappleUI>();
+			if (m_grappleUI != null)
+			{
+				m_grappleUI.ShowCrosshair(true); // This now ALSO handles cursor state
+				m_grappleUI.SetCrosshairLocked(false); 
+			}
+			
+			// Player and camera should not move
+			//player.SetVelocity(Vector3.zero);
 		}
 
 		protected override void OnExit(Player player)
 		{
 			Debug.Log("Exiting Aiming Hookshot State");
-			// Ensure previous target is unhighlighted
+			
+			// Hide the crosshair
+			if (m_grappleUI != null)
+			{
+				m_grappleUI.ShowCrosshair(false); // This restores cursor state
+			}
+			m_grappleUI = null; 
+			
 			if (m_potentialTarget != null)
 			{
 				m_potentialTarget.SetHighlight(false);
 				m_potentialTarget = null;
 			}
-
-			Game.LockCursor(true);
-
-			// Optional: Restore time scale if changed
-			// Time.timeScale = 1.0f;
 		}
 
 		protected override void OnStep(Player player)
 		{
-			// --- Aiming Raycast ---
-			Ray ray;
-			Vector2 aimPosition; // To store mouse or screen center
+			// --- NEW SIMPLIFIED RAYCAST ---
+			
+			// If UI isn't ready, do nothing.
+			if (m_grappleUI == null) return;
 
-			// Check if a mouse device is currently connected and being used
-			// Mouse.current will be null if no mouse is connected
-			Mouse mouse = Mouse.current;
+			// Get the aim position directly from the UI script
+			Vector2 aimPosition = m_grappleUI.CurrentCrosshairScreenPosition;
+			
+			// Cast the ray from our dynamic aim position
+			Ray ray = m_mainCamera.ScreenPointToRay(aimPosition);
+			
+			// --- END NEW RAYCAST ---
 
-			if (mouse != null && mouse.deviceId != InputDevice.InvalidDeviceId) // Check if mouse is valid
-			{
-				// Read the current mouse position from the new Input System
-				aimPosition = mouse.position.ReadValue();
-				ray = m_mainCamera.ScreenPointToRay(aimPosition);
-				// Debug.Log("Using Mouse Position: " + aimPosition); // Optional debug
-			}
-			else
-			{
-				// No mouse detected or active, default to center screen raycast
-				// This is useful for controllers or mobile where there's no mouse cursor
-				aimPosition = new Vector2(Screen.width / 2f, Screen.height / 2f); // Calculate center
-				ray = m_mainCamera.ScreenPointToRay(aimPosition);
-				// Debug.Log("Using Center Screen"); // Optional debug
-			}
-
-			GrappleTarget hitTarget = null; // Target hit by the raycast this frame
+			GrappleTarget hitTarget = null; 
 
 			if (Physics.Raycast(ray, out RaycastHit hit, hookshotRange, grappleableLayer | obstacleLayer))
 			{
 				// Check if we hit a grappleable target directly
 				if (((1 << hit.collider.gameObject.layer) & grappleableLayer) != 0)
 				{
-					// Verify line of sight from hookshot origin (not just camera)
+					// Verify line of sight from hookshot origin
 					if (!Physics.Linecast(hookshotOrigin.position, hit.point, obstacleLayer))
 					{
 						hitTarget = hit.collider.GetComponent<GrappleTarget>();
 					}
 				}
-				// If we hit an obstacle first, there's no valid target in line of sight via this ray
 			}
 
-			// --- Highlighting Logic ---
-			// Unhighlight previous target if it's no longer the potential target
+			// --- Highlighting Logic (Both 3D object and 2D UI) ---
 			if (m_potentialTarget != null && m_potentialTarget != hitTarget)
 			{
 				m_potentialTarget.SetHighlight(false);
 			}
-
-			// Highlight the new potential target
+			
 			m_potentialTarget = hitTarget;
+			
 			if (m_potentialTarget != null)
 			{
-				m_potentialTarget.SetHighlight(true);
+				m_potentialTarget.SetHighlight(true); 
 			}
-
+			
+			// Update the UI sprite (locked or default)
+			if (m_grappleUI != null)
+			{
+				m_grappleUI.SetCrosshairLocked(m_potentialTarget != null);
+			}
+			
 			// --- Firing Logic ---
-			bool fireInput = player.inputs.actions["Grapple"].WasPressedThisFrame(); // Or your fire button/mouse click
+			bool fireInput = player.inputs.actions["Grapple"].WasPressedThisFrame(); 
 
 			if (fireInput && m_potentialTarget != null)
 			{
-				// --- MODIFICATION START ---
-				// Set the target on the Player script
 				player.currentGrappleTarget = m_potentialTarget;
-				// --- MODIFICATION END ---
-
-				// Found a target and fire button pressed - transition to active hookshot state
 				player.states.Change<GrapplePlayerState>();
-				// m_potentialTarget will be unhighlighted in OnExit
-				return; // Exit early
+				return; 
 			}
 
 			// --- Cancel Logic ---
-			// Optional: Add input to cancel aiming (e.g., pressing crouch, different button)
-			bool cancelInput = player.inputs.actions["Crouch"].WasPressedThisFrame(); // Example cancel input
+			bool cancelInput = player.inputs.actions["Crouch"].WasPressedThisFrame(); 
 			if (cancelInput)
 			{
 				Debug.Log("Aiming cancelled.");
-				player.states.Change(player.states.last); // Go back to previous state
-				return; // Exit early
+				player.states.Change(player.states.last); 
+				return; 
 			}
-
-			// Keep player somewhat controlled while aiming (optional)
-			// player.Gravity(); // Apply gravity
-			// player.SnapToGround();
-			// player.Friction(); // Apply friction to stop quickly
+			
+			// Ensure player doesn't move
+			//player.SetVelocity(Vector3.zero);
 		}
-
-		// No specific collision handling needed in aiming state
+		
 		public override void OnContact(Player player, Collider other) { }
 	}
 }
