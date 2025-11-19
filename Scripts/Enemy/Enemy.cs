@@ -1,4 +1,5 @@
 using UnityEngine;
+using UnityEngine.Splines; // Required for SplinePath
 
 namespace PLAYERTWO.PlatformerProject
 {
@@ -12,10 +13,23 @@ namespace PLAYERTWO.PlatformerProject
 		[Header("Enemy Settings")]
 		public EnemyEvents enemyEvents;
 
+		[Tooltip("Force applied to snap the Enemy to the center of the current spline path.")]
+		public float snapToPathForce = 10f; // Added for spline following
+
 		protected Player m_player;
 
 		protected Collider[] m_sightOverlaps = new Collider[1024];
 		protected Collider[] m_contactAttackOverlaps = new Collider[1024];
+
+		// --- NEW SPLINE PROPERTIES ---
+		/// <summary>
+		/// Returns the Spline Path instance in which the Enemy is following.
+		/// </summary>
+		public SplinePath splinePath { get; set; }
+
+		protected Vector3 m_pathForward;
+		protected Vector3 m_closestPointOnPath;
+		// --- END NEW SPLINE PROPERTIES ---
 
 		/// <summary>
 		/// Returns the Enemy Stats Manager instance.
@@ -37,6 +51,29 @@ namespace PLAYERTWO.PlatformerProject
 		/// </summary>
 		public Player player { get; protected set; }
 
+		/// <summary>
+		/// Returns true if the Enemy health is not empty.
+		/// </summary>
+		public virtual bool isAlive => !health.isEmpty; // Added for SplinePath check
+
+		/// <summary>
+		/// Returns the current forward direction of the Enemy's path.
+		/// </summary>
+		public virtual Vector3 pathForward // Added to match Player functionality
+		{
+			set { m_pathForward = value; }
+			get
+			{
+				if (splinePath)
+					return splinePath.GetPathForward(this, out m_closestPointOnPath);
+				
+				if (m_pathForward == Vector3.zero)
+					m_pathForward = transform.forward;
+
+				return m_pathForward;
+			}
+		}
+
 		protected virtual void InitializeStatsManager() => stats = GetComponent<EnemyStatsManager>();
 		protected virtual void InitializeWaypointsManager() => waypoints = GetComponent<WaypointManager>();
 		protected virtual void InitializeHealth() => health = GetComponent<Health>();
@@ -57,6 +94,14 @@ namespace PLAYERTWO.PlatformerProject
 				{
 					controller.enabled = false;
 					enemyEvents.OnDie?.Invoke();
+					
+					// --- NEW ---
+					// Ensure enemy is removed from spline on death
+					if (splinePath != null)
+					{
+						splinePath.RemoveEnemy(this);
+					}
+					// --- END NEW ---
 				}
 			}
 		}
@@ -70,7 +115,7 @@ namespace PLAYERTWO.PlatformerProject
 
 			health.ResetHealth();
 			controller.enabled = true;
-			enemyEvents.OnRevive.Invoke();
+			enemyEvents.OnRevive?.Invoke();
 		}
 
 		public virtual void Accelerate(Vector3 direction, float acceleration, float topSpeed) =>
@@ -146,13 +191,42 @@ namespace PLAYERTWO.PlatformerProject
 			{
 				var distance = Vector3.Distance(position, player.position);
 
-				if ((player.health.current == 0) || (distance > stats.current.viewRange))
+				if ((!player.isAlive) || (distance > stats.current.viewRange)) // Used player.isAlive
 				{
 					player = null;
 					enemyEvents.OnPlayerScaped?.Invoke();
 				}
 			}
 		}
+		
+		// --- NEW METHODS ---
+		
+		/// <summary>
+		/// Keeps the Enemy snapped to the SplinePath.
+		/// </summary>
+		protected virtual void AdjustToPath()
+		{
+			if (!splinePath || onRails)
+				return;
+
+			var pathDirection = m_closestPointOnPath - position;
+			var adjustDelta = snapToPathForce * Time.deltaTime;
+
+			pathDirection -= Vector3.Dot(pathDirection, transform.up) * transform.up;
+			pathDirection -= Vector3.Dot(pathDirection, pathForward) * pathForward;
+			position = Vector3.MoveTowards(position, position + pathDirection, adjustDelta);
+		}
+
+		/// <summary>
+		/// Overridden to also call AdjustToPath, mimicking Player.cs.
+		/// </summary>
+		protected override void HandleSpline()
+		{
+			base.HandleSpline(); // Handles rail logic
+			AdjustToPath(); // Handles SplinePath logic
+		}
+		
+		// --- END NEW METHODS ---
 
 		protected virtual void OnPlayerSpotted()
 		{
@@ -172,6 +246,7 @@ namespace PLAYERTWO.PlatformerProject
 			InitializeStatsManager();
 			InitializeWaypointsManager();
 			InitializeHealth();
+			m_pathForward = transform.forward; // Initialize pathForward
 		}
 
 		protected virtual void OnTriggerEnter(Collider other)

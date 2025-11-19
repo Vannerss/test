@@ -97,8 +97,8 @@ namespace PLAYERTWO.PlatformerProject
 
 		protected virtual void Start()
 		{
-			if (m_level)
-				stars = m_level.GetStarts();
+			// if (m_level)
+			// 	stars = m_level.GetStarts();
 
 			OnScoreLoaded.Invoke();
 		}
